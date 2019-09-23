@@ -9,6 +9,9 @@ from torchvision.utils import save_image
 
 import net
 from function import adaptive_instance_normalization, coral
+
+import sys
+sys.path.append('/home/sonic/multi_source_DA')
 from datasets.domainnet import CustomDomainNet, CustomDomainNetTestSet
 
 
