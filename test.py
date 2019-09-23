@@ -9,6 +9,7 @@ from torchvision.utils import save_image
 
 import net
 from function import adaptive_instance_normalization, coral
+from datasets.domainnet import CustomDomainNet, CustomDomainNetTestSet
 
 
 def test_transform(size, crop):
@@ -88,15 +89,23 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 output_dir = Path(args.output)
 output_dir.mkdir(exist_ok=True, parents=True)
 
+tgt_style_domain =  'clipart'
 # Either --content or --contentDir should be given.
-assert (args.content or args.content_dir)
-if args.content:
-    content_paths = [Path(args.content)]
-else:
-    content_dir = Path(args.content_dir)
-    content_paths = [f for f in content_dir.glob('*')]
+#assert (args.content or args.content_dir)
+#if args.content:
+#    content_paths = [Path(args.content)]
+#else:
+#    content_dir = Path(args.content_dir)
+#    content_paths = [f for f in content_dir.glob('*')]
+dataset_src_train = CustomDomainNet(is_train=True, domains=['infograph','quickdraw','real','sketch'])
+dataset_src_val = CustomDomainNet(is_train=False, domains=['infograph','quickdraw','real','sketch'])
+content_paths = list(dataset_src_train.img_paths) + \
+                list(dataset_src_val.img_paths) 
+print(len(content_paths))
+print(content_paths[:10])
 
 # Either --style or --styleDir should be given.
+"""
 assert (args.style or args.style_dir)
 if args.style:
     style_paths = args.style.split(',')
@@ -111,6 +120,10 @@ if args.style:
 else:
     style_dir = Path(args.style_dir)
     style_paths = [f for f in style_dir.glob('*')]
+"""
+style_paths = list(CustomDomainNetTestSet(is_train=True, domains=[tgt_style_domain]).img_paths)
+print(len(style_paths))
+print(style_paths[:10])
 
 decoder = net.decoder
 vgg = net.vgg
@@ -129,7 +142,7 @@ content_tf = test_transform(args.content_size, args.crop)
 style_tf = test_transform(args.style_size, args.crop)
 
 for content_path in content_paths:
-    if do_interpolation:  # one content image, N style image
+    if False: #do_interpolation:  # one content image, N style image
         style = torch.stack([style_tf(Image.open(str(p))) for p in style_paths])
         content = content_tf(Image.open(str(content_path))) \
             .unsqueeze(0).expand_as(style)
@@ -144,18 +157,21 @@ for content_path in content_paths:
         save_image(output, str(output_name))
 
     else:  # process one content and one style
-        for style_path in style_paths:
-            content = content_tf(Image.open(str(content_path)))
-            style = style_tf(Image.open(str(style_path)))
-            if args.preserve_color:
-                style = coral(style, content)
-            style = style.to(device).unsqueeze(0)
-            content = content.to(device).unsqueeze(0)
-            with torch.no_grad():
-                output = style_transfer(vgg, decoder, content, style,
-                                        args.alpha)
-            output = output.cpu()
+        style_path = random.choice(style_paths)
+#        for style_path in style_paths:
+        content = content_tf(Image.open(str(content_path)))
+        style = style_tf(Image.open(str(style_path)))
+        if args.preserve_color:
+            style = coral(style, content)
+        style = style.to(device).unsqueeze(0)
+        content = content.to(device).unsqueeze(0)
+        with torch.no_grad():
+            output = style_transfer(vgg, decoder, content, style,
+                                    args.alpha)
+        output = output.cpu()
 
-            output_name = output_dir / '{:s}_stylized_{:s}{:s}'.format(
-                content_path.stem, style_path.stem, args.save_ext)
-            save_image(output, str(output_name))
+#        output_name = output_dir / '{:s}_stylized_{:s}{:s}'.format(
+#            content_path.stem, style_path.stem, args.save_ext)
+#        save_image(output, str(output_name))
+        output_path = content_path.replace('domainnet', 'domainnet_stylized_{}'.format(tgt_style_domain))
+        save_image(output, str(output_path))
