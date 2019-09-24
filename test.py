@@ -1,5 +1,7 @@
 import argparse
 from pathlib import Path
+import os
+import os.path as osp
 
 import torch
 import torch.nn as nn
@@ -9,7 +11,7 @@ from torchvision.utils import save_image
 
 import net
 from function import adaptive_instance_normalization, coral
-
+import random
 import sys
 sys.path.append('/home/sonic/multi_source_DA')
 from datasets.domainnet import CustomDomainNet, CustomDomainNetTestSet
@@ -82,6 +84,10 @@ parser.add_argument('--alpha', type=float, default=1.0,
 parser.add_argument(
     '--style_interpolation_weights', type=str, default='',
     help='The weight for blending the style of multiple style images')
+parser.add_argument(
+    '--source', type=str, default='',
+    help='The weight for blending the style of multiple style images')
+
 
 args = parser.parse_args()
 
@@ -92,7 +98,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 output_dir = Path(args.output)
 output_dir.mkdir(exist_ok=True, parents=True)
 
-tgt_style_domain =  'clipart'
+tgt_style_domain =  'sketch'
+source_domain = args.source
 # Either --content or --contentDir should be given.
 #assert (args.content or args.content_dir)
 #if args.content:
@@ -100,8 +107,10 @@ tgt_style_domain =  'clipart'
 #else:
 #    content_dir = Path(args.content_dir)
 #    content_paths = [f for f in content_dir.glob('*')]
-dataset_src_train = CustomDomainNet(is_train=True, domains=['infograph','quickdraw','real','sketch'])
-dataset_src_val = CustomDomainNet(is_train=False, domains=['infograph','quickdraw','real','sketch'])
+#dataset_src_train = CustomDomainNet(is_train=True, domains=['infograph','quickdraw','real','sketch'])
+#dataset_src_val = CustomDomainNet(is_train=False, domains=['infograph','quickdraw','real','sketch'])
+dataset_src_train = CustomDomainNet(is_train=True, domains=[source_domain])
+dataset_src_val = CustomDomainNet(is_train=False, domains=[source_domain])
 content_paths = list(dataset_src_train.img_paths) + \
                 list(dataset_src_val.img_paths) 
 print(len(content_paths))
@@ -124,7 +133,8 @@ else:
     style_dir = Path(args.style_dir)
     style_paths = [f for f in style_dir.glob('*')]
 """
-style_paths = list(CustomDomainNetTestSet(is_train=True, domains=[tgt_style_domain]).img_paths)
+#style_paths = list(CustomDomainNetTestSet(is_train=True, domains=[tgt_style_domain]).img_paths)
+style_paths = list(CustomDomainNet(is_train=True, domains=[tgt_style_domain]).img_paths)
 print(len(style_paths))
 print(style_paths[:10])
 
@@ -144,7 +154,9 @@ decoder.to(device)
 content_tf = test_transform(args.content_size, args.crop)
 style_tf = test_transform(args.style_size, args.crop)
 
-for content_path in content_paths:
+for idx, content_path in enumerate(content_paths):
+    if idx%10 == 0:
+        print('{}/{}'.format(idx,len(content_paths)))
     if False: #do_interpolation:  # one content image, N style image
         style = torch.stack([style_tf(Image.open(str(p))) for p in style_paths])
         content = content_tf(Image.open(str(content_path))) \
@@ -177,4 +189,6 @@ for content_path in content_paths:
 #            content_path.stem, style_path.stem, args.save_ext)
 #        save_image(output, str(output_name))
         output_path = content_path.replace('domainnet', 'domainnet_stylized_{}'.format(tgt_style_domain))
+        output_path =output_path.replace('/home/yumin/dataset', '/data1')
+        os.makedirs(osp.dirname(output_path), exist_ok=True)
         save_image(output, str(output_path))
